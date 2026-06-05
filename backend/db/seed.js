@@ -7,9 +7,9 @@ import db from './db.js';
 import config from '../config.js';
 
 const SEED_USERS = [
-  { email: 'admin@ecoskeptic.org', password: 'admin123', role: 'admin', full_name: 'Jane Vance', title: 'Platform Administrator' },
-  { email: 'auditor@ecoskeptic.org', password: 'auditor123', role: 'auditor', full_name: 'Dr. Marcus Finch', title: 'Sustainability Auditor' },
-  { email: 'consumer@ecoskeptic.org', password: 'consumer123', role: 'consumer', full_name: 'David K.', title: 'General Consumer' }
+  { email: 'admin@greengaurd.org', password: 'admin123', role: 'admin', full_name: 'Jane Vance', title: 'Platform Administrator' },
+  { email: 'auditor@greengaurd.org', password: 'auditor123', role: 'auditor', full_name: 'Dr. Marcus Finch', title: 'Sustainability Auditor' },
+  { email: 'consumer@greengaurd.org', password: 'consumer123', role: 'consumer', full_name: 'David K.', title: 'General Consumer' }
 ];
 
 const SEED_INCIDENTS = [

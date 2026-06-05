@@ -12,6 +12,7 @@ import { seed } from './db/seed.js';
 import authRouter from './routes/auth.js';
 import analysisRouter from './routes/analysis.js';
 import incidentsRouter from './routes/incidents.js';
+import databaseRouter from './routes/database.js';
 
 // Services
 import { startLiveFeedSimulator } from './services/liveFeed.js';
@@ -69,6 +70,7 @@ app.set('wsBroadcast', wsBroadcast);
 app.use('/api/auth', authRouter);
 app.use('/api/scan', analysisRouter);
 app.use('/api/incidents', incidentsRouter);
+app.use('/api/database', databaseRouter);
 
 // Health check
 app.get('/api/health', (req, res) => {

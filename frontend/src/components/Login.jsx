@@ -21,7 +21,7 @@ export default function Login() {
   };
 
   const fillCredentials = (role) => {
-    setEmail(`${role}@ecoskeptic.org`);
+    setEmail(`${role}@greengaurd.org`);
     setPassword(`${role}123`);
   };
 
@@ -39,7 +39,7 @@ export default function Login() {
           <div className="w-12 h-12 rounded-xl bg-primary-container flex items-center justify-center mb-3 text-primary shadow-[0_0_15px_rgba(16,185,129,0.2)]">
             <ShieldCheck className="w-7 h-7" />
           </div>
-          <h1 className="font-headline-xl text-3xl font-bold text-text-ivory tracking-tight">EcoSkeptic</h1>
+          <h1 className="font-headline-xl text-3xl font-bold text-text-ivory tracking-tight">GreenGaurd</h1>
           <p className="text-outline text-sm mt-1 text-center font-medium">Forensic Greenwashing Verification</p>
           <p className="text-[10px] text-outline/70 mt-1.5 max-w-[250px] text-center italic">
             Connecting consumer audits with sustainability compliance
@@ -59,7 +59,7 @@ export default function Login() {
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="e.g. auditor@ecoskeptic.org"
+              placeholder="e.g. auditor@greengaurd.org"
               required
               className="w-full px-4 py-3 bg-[#050B08] border border-whisper-border focus:border-primary rounded-lg text-text-ivory text-sm focus:outline-none focus:ring-1 focus:ring-primary transition-colors"
             />

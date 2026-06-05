@@ -5,6 +5,7 @@ import ScannerWorkspace from './components/ScannerWorkspace';
 import LiveAlertFeed from './components/LiveAlertFeed';
 import AnalyticsPanel from './components/AnalyticsPanel';
 import CorporateDatabase from './components/CorporateDatabase';
+import CorporateWeb from './components/CorporateWeb';
 import api from './utils/api';
 import { 
   ShieldCheck, 
@@ -19,7 +20,8 @@ import {
   UserCheck,
   Menu,
   X,
-  Loader2
+  Loader2,
+  Network
 } from 'lucide-react';
 
 export default function App() {
@@ -168,7 +170,6 @@ export default function App() {
   const switchTab = (tab) => {
     setActiveTab(tab);
     setSidebarOpen(false);
-    // Refresh incidents when switching to database or analytics
     if (tab === 'database' || tab === 'analytics') {
       fetchIncidents();
     }
@@ -191,7 +192,7 @@ export default function App() {
       <aside className={`fixed left-0 top-0 h-full w-64 lg:w-sidebar-width bg-[#050B08] border-r border-whisper-border flex flex-col z-50 transition-transform duration-300 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}>
         <div className="p-6 flex items-center justify-between lg:justify-start gap-3">
           <div className="flex items-center gap-3">
-            <span className="font-headline-xl text-lg font-bold text-primary tracking-tight">EcoSkeptic</span>
+            <span className="font-headline-xl text-lg font-bold text-primary tracking-tight">GreenGaurd</span>
             <div className="w-2 h-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(78,222,163,0.6)]"></div>
           </div>
           <button className="lg:hidden text-outline hover:text-text-ivory" onClick={() => setSidebarOpen(false)}>
@@ -223,6 +224,18 @@ export default function App() {
             >
               <Database className="w-4 h-4" />
               <span className="font-label-caps text-xs">Offender DB</span>
+            </button>
+
+            <button
+              onClick={() => switchTab('network')}
+              className={`w-full flex items-center gap-3 px-4 py-3 font-medium transition-all duration-200 group text-left rounded-md ${
+                activeTab === 'network' 
+                  ? 'text-alert-crimson font-bold border-r-2 border-alert-crimson bg-[#11231c]' 
+                  : 'text-on-surface-variant hover:bg-surface-variant hover:text-alert-crimson'
+              }`}
+            >
+              <Network className="w-4 h-4" />
+              <span className="font-label-caps text-xs">Corporate Web</span>
             </button>
 
             <button
@@ -286,7 +299,7 @@ export default function App() {
               <Menu className="w-5 h-5" />
             </button>
             <div className="hidden sm:flex items-center gap-2 text-[10px] font-label-caps">
-              <span className="text-on-surface-variant tracking-widest">ECOSKEPTIC COMPLIANCE</span>
+              <span className="text-on-surface-variant tracking-widest">GREENGAURD COMPLIANCE</span>
               <span className="text-whisper-border">/</span>
               <span className="text-primary animate-pulse">{activeTab.toUpperCase()}_UNIT</span>
             </div>
@@ -303,7 +316,11 @@ export default function App() {
               </div>
             </div>
 
-            <button className="relative text-on-surface-variant hover:text-primary transition-colors">
+            <button 
+              onClick={() => switchTab('scanner')}
+              title="View Live Alerts"
+              className="relative text-on-surface-variant hover:text-primary transition-colors"
+            >
               <Bell className="w-5 h-5" />
               {liveAlerts.length > 0 && (
                 <span className="absolute -top-1.5 -right-1.5 w-3.5 h-3.5 bg-alert-crimson text-white text-[8px] font-bold flex items-center justify-center rounded-full animate-in zoom-in shadow-[0_0_8px_rgba(239,68,68,0.6)]">
@@ -344,6 +361,12 @@ export default function App() {
                   onRemove={user.role === 'admin' ? handleDeleteIncident : null} 
                 />
               )}
+            </div>
+          )}
+
+          {activeTab === 'network' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 fill-mode-both">
+              <CorporateWeb />
             </div>
           )}
 

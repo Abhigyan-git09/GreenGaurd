@@ -1,6 +1,8 @@
 // services/liveFeed.js — WebSocket live event stream generator
 // Simulates crowd-sourced greenwashing scans arriving every 15 seconds
 
+import db from '../db/db.js';
+
 const STREAM_COMPANIES = [
   { name: 'EcoGas Corp', parent: 'ChevronUnion', category: 'Energy', texts: 'Our gas is mixed with 5% biofuels to offset 100% of pipeline transit emissions. Natural warmth for your home.' },
   { name: 'VerdeThread Apparel', parent: 'GlobalRetail', category: 'Apparel', texts: 'This consciously manufactured winter collection uses synthetic fabrics sourced from eco-certified spinning mills.' },
@@ -13,6 +15,14 @@ const STREAM_COMPANIES = [
 ];
 
 const FLAG_TYPES = ['Blatant False Claim', 'Offset Manipulation', 'Unverified Certification', 'Vague Marketing Wording', 'False Biodegradable Claims'];
+const SIN_TYPES = [
+  'Sin of Fibbing',
+  'Sin of Vagueness',
+  'Sin of No Proof',
+  'Sin of the Hidden Trade-off',
+  'Sin of Worshipping False Labels',
+  'Sin of Lesser of Two Evils'
+];
 
 let intervalId = null;
 
@@ -21,25 +31,45 @@ export function startLiveFeedSimulator(broadcastFn) {
 
   console.log('[LIVE FEED] Simulator started — emitting events every 15s');
 
-  intervalId = setInterval(() => {
+  intervalId = setInterval(async () => {
     const company = STREAM_COMPANIES[Math.floor(Math.random() * STREAM_COMPANIES.length)];
     const skepticScore = Math.floor(Math.random() * 60) + 40; // 40–100
     const severity = skepticScore > 75 ? 'Critical' : skepticScore > 40 ? 'Medium' : 'Low';
+    const flagType = FLAG_TYPES[Math.floor(Math.random() * FLAG_TYPES.length)];
+    const sinType = SIN_TYPES[Math.floor(Math.random() * SIN_TYPES.length)];
 
-    const alert = {
-      id: Date.now(),
-      companyName: company.name,
-      parentCorporation: company.parent,
-      category: company.category,
-      skepticScore,
-      severity,
-      status: 'Pending',
-      flagType: FLAG_TYPES[Math.floor(Math.random() * FLAG_TYPES.length)],
-      text_content: company.texts,
-      timestamp: 'Just scanned'
-    };
+    try {
+      const incident = await db.createIncident({
+        product_name: `Scanned: ${company.name}`,
+        company_name: company.name,
+        parent_corporation: company.parent,
+        category: company.category,
+        text_content: company.texts,
+        skeptic_score: skepticScore,
+        severity,
+        flag_type: flagType,
+        status: 'Pending',
+        submitted_by: 1
+      });
 
-    broadcastFn({ type: 'NEW_ALERT', alert });
+      const alert = {
+        id: incident.id,
+        companyName: company.name,
+        parentCorporation: company.parent,
+        category: company.category,
+        skepticScore,
+        severity,
+        status: 'Pending',
+        flagType,
+        sinType,
+        text_content: company.texts,
+        timestamp: 'Just scanned'
+      };
+
+      broadcastFn({ type: 'NEW_ALERT', alert });
+    } catch (err) {
+      console.error('[LIVE FEED] Error persisting simulated event:', err);
+    }
   }, 15000);
 }
 

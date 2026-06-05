@@ -83,6 +83,30 @@ const api = {
     return handleResponse(res);
   },
 
+  async scanEsg({ text }) {
+    const res = await fetch(`${API_URL}/api/scan/esg`, {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ text })
+    });
+    return handleResponse(res);
+  },
+
+  async searchProduct(query) {
+    const res = await fetch(`${API_URL}/api/scan/search/${encodeURIComponent(query)}`, {
+      headers: authHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  // Corporate Network Graph
+  async getCorporateNetwork() {
+    const res = await fetch(`${API_URL}/api/database/network`, {
+      headers: authHeaders()
+    });
+    return handleResponse(res);
+  },
+
   // Utility
   logout() {
     localStorage.removeItem('ecoskeptic_token');

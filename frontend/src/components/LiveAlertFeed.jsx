@@ -59,7 +59,12 @@ export default function LiveAlertFeed({ alerts, onVerify, onReject, userRole }) 
                     {alert.severity} Incident
                   </span>
                   <h3 className="font-headline-md text-sm font-bold text-text-ivory mt-1">{alert.companyName}</h3>
-                  <span className="text-[10px] text-outline italic">Parent: {alert.parentCorporation}</span>
+                  {alert.sinType && (
+                    <span className="inline-block mt-1 px-1.5 py-0.5 rounded text-[9px] font-label-caps font-bold border bg-primary/10 text-primary border-primary/30 w-fit">
+                      {alert.sinType}
+                    </span>
+                  )}
+                  <span className="text-[10px] text-outline italic mt-1 block">Parent: {alert.parentCorporation}</span>
                 </div>
                 <div className="text-right">
                   <span
