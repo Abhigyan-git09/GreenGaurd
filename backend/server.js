@@ -23,13 +23,10 @@ const server = createServer(app);
 // ── Middleware ───────────────────────────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: false }));
 app.use(cors({
-  origin: [
-    'http://localhost:5173',
-    'http://localhost:3000',
-    'http://127.0.0.1:5173',
-    // Add your production frontend URL here when deploying:
-    // 'https://ecoskeptic.vercel.app',
-  ],
+  origin: function (origin, callback) {
+    // Allow all origins dynamically for the demo
+    callback(null, true);
+  },
   credentials: true
 }));
 app.use(express.json({ limit: '2mb' }));
