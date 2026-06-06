@@ -32,7 +32,8 @@ app.use(cors({
     if (ALLOWED_ORIGINS.includes('*') || ALLOWED_ORIGINS.includes(origin)) {
       return callback(null, true);
     }
-    return callback(new Error(`CORS: origin '${origin}' not allowed`));
+    console.warn(`[CORS] Rejected origin: ${origin}`);
+    return callback(null, false);
   },
   credentials: true
 }));
