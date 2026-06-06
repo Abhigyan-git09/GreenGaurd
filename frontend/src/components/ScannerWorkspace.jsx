@@ -49,6 +49,7 @@ export default function ScannerWorkspace({ onNewAlertTriggered }) {
   const [isSearching, setIsSearching] = useState(false);
   const [activeImage, setActiveImage] = useState(MOCK_EXAMPLES.shampoo.imageUrl);
   const [activeCompanyName, setActiveCompanyName] = useState('LushLogistics Co.');
+  const [uploadedFile, setUploadedFile] = useState(null);
 
   const [esgText, setEsgText] = useState(ESG_SAMPLE);
   const [esgScanning, setEsgScanning] = useState(false);
@@ -64,6 +65,7 @@ export default function ScannerWorkspace({ onNewAlertTriggered }) {
     setScanProgress(0);
     setScanResult(null);
     setActiveImage(activeExample.imageUrl);
+    setUploadedFile(null);
   }, [selectedKey]);
 
   const handleSearch = async (e) => {
@@ -107,12 +109,20 @@ export default function ScannerWorkspace({ onNewAlertTriggered }) {
     }, 150);
 
     try {
-      const result = await api.scanText({
-        text: userText,
-        strictness,
-        company_name: activeCompanyName,
-        category: 'Personal Care'
-      });
+      let result;
+      if (mode === 'vision' && uploadedFile) {
+        result = await api.scanVision(uploadedFile);
+        if (result.extractedText) {
+          setUserText(result.extractedText);
+        }
+      } else {
+        result = await api.scanText({
+          text: userText,
+          strictness,
+          company_name: activeCompanyName,
+          category: 'Personal Care'
+        });
+      }
 
       clearInterval(interval);
       setScanProgress(100);
@@ -295,6 +305,26 @@ export default function ScannerWorkspace({ onNewAlertTriggered }) {
           </div>
 
           <div className="relative flex-1 bg-black flex items-center justify-center overflow-hidden">
+            {mode === 'vision' && !scanning && scanProgress === 0 && (
+              <div className="absolute top-4 left-4 z-30">
+                <label className="cursor-pointer bg-surface-container/80 backdrop-blur border border-whisper-border text-text-ivory px-3 py-1.5 rounded flex items-center gap-2 font-label-caps text-[9px] hover:bg-surface-variant transition-colors">
+                  UPLOAD IMAGE
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      const file = e.target.files[0];
+                      if (file) {
+                        setUploadedFile(file);
+                        setActiveImage(URL.createObjectURL(file));
+                        resetScan();
+                      }
+                    }}
+                  />
+                </label>
+              </div>
+            )}
             <img
               src={activeImage}
               alt="Scanned Target"

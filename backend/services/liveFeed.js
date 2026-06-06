@@ -49,7 +49,7 @@ export function startLiveFeedSimulator(broadcastFn) {
         severity,
         flag_type: flagType,
         status: 'Pending',
-        submitted_by: 1
+        submitted_by: null
       });
 
       const alert = {

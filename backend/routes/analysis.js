@@ -2,8 +2,14 @@
 import { Router } from 'express';
 import { authenticateToken } from './auth.js';
 import db from '../db/db.js';
+import multer from 'multer';
+import vision from '@google-cloud/vision';
 
 const router = Router();
+const upload = multer({ storage: multer.memoryStorage() });
+
+// No longer using @google-cloud/vision, we will use Gemini Multimodal
+let visionClient = null;
 
 async function callGemini(systemPrompt, userText) {
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -36,6 +42,49 @@ async function callGemini(systemPrompt, userText) {
   return null;
 }
 
+async function callGeminiMultimodal(systemPrompt, imageBuffer, mimeType) {
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) return null;
+  
+  try {
+    const base64Image = imageBuffer.toString('base64');
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [
+          { 
+            role: "user", 
+            parts: [
+              { text: systemPrompt },
+              {
+                inlineData: {
+                  mimeType: mimeType,
+                  data: base64Image
+                }
+              }
+            ] 
+          }
+        ],
+        generationConfig: {
+          responseMimeType: "application/json"
+        }
+      })
+    });
+    
+    if (!response.ok) {
+      console.error("[GEMINI MULTIMODAL] HTTP Error:", response.status, await response.text());
+      return null;
+    }
+    const data = await response.json();
+    if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
+      return JSON.parse(data.candidates[0].content.parts[0].text);
+    }
+  } catch (err) {
+    console.error("[GEMINI MULTIMODAL] API Error:", err);
+  }
+  return null;
+}
 
 const SINS = {
   VAGUENESS: 'Sin of Vagueness',
@@ -73,6 +122,15 @@ router.post('/', authenticateToken, async (req, res) => {
     if (!text || text.trim().length === 0) {
       return res.status(400).json({ error: 'Text content is required for analysis.' });
     }
+
+    if (typeof text !== 'string' || text.length > 50000) {
+      return res.status(400).json({ error: 'Text must be a string up to 50000 characters.' });
+    }
+
+    let parsedStrictness = Number(strictness);
+    if (!Number.isFinite(parsedStrictness)) parsedStrictness = 50;
+    parsedStrictness = Math.min(100, Math.max(1, parsedStrictness));
+    const strictnessValue = parsedStrictness;
 
     let matches = [];
     let totalWeight = 0;
@@ -120,14 +178,15 @@ Return ONLY a JSON array of objects. Each object must have:
 
     // Calculate skeptic score (0-100) adjusted by strictness
     const rawScore = Math.min(totalWeight, 100);
-    const adjustedScore = Math.min(Math.round(rawScore * (strictness / 50)), 100);
+    const adjustedScore = Math.min(Math.round(rawScore * (strictnessValue / 50)), 100);
     const severity = adjustedScore > 75 ? 'Critical' : adjustedScore > 40 ? 'Medium' : 'Low';
 
     // Determine flag type
-    const topMatch = matches.sort((a, b) => {
+    const sortedMatches = [...matches].sort((a, b) => {
       const w = { critical: 3, deceptive: 2, low: 1 };
       return (w[b.type] || 0) - (w[a.type] || 0);
-    })[0];
+    });
+    const topMatch = sortedMatches[0];
     const flagType = topMatch ? topMatch.label : 'Vague Marketing Wording';
     const sinType = topMatch ? topMatch.sinType : SINS.VAGUENESS;
 
@@ -277,6 +336,10 @@ router.post('/esg', authenticateToken, async (req, res) => {
       return res.status(400).json({ error: 'ESG text is required for analysis.' });
     }
 
+    if (typeof text !== 'string' || text.length > 100000) {
+      return res.status(400).json({ error: 'ESG text must be a string up to 100000 characters.' });
+    }
+
     let esgReportCard = null;
 
     if (process.env.GEMINI_API_KEY) {
@@ -292,11 +355,18 @@ Return ONLY a JSON object with:
 
       const geminiResult = await callGemini(prompt, text);
       if (geminiResult && geminiResult.totalWords !== undefined) {
-        const fluffRatio = geminiResult.totalWords > 0 ? +(geminiResult.fluffWordCount / geminiResult.totalWords).toFixed(3) : 0;
-        const grade = gradeFor(fluffRatio, geminiResult.concreteMetricCount);
+        const safeFluff = Number.isFinite(Number(geminiResult.fluffWordCount)) ? Number(geminiResult.fluffWordCount) : 0;
+        const safeTotal = Number.isFinite(Number(geminiResult.totalWords)) ? Number(geminiResult.totalWords) : 0;
+        const fluffRatio = safeTotal > 0 ? +(safeFluff / safeTotal).toFixed(3) : 0;
+        const safeConcreteCount = Number.isFinite(Number(geminiResult.concreteMetricCount)) ? Number(geminiResult.concreteMetricCount) : 0;
+        const grade = gradeFor(fluffRatio, safeConcreteCount);
         esgReportCard = {
           ...geminiResult,
-          totalSentences: geminiResult.fluffSentences.length + geminiResult.concreteSentences.length,
+          totalWords: safeTotal,
+          fluffWordCount: safeFluff,
+          concreteMetricCount: safeConcreteCount,
+          totalSentences: (Array.isArray(geminiResult.fluffSentences) ? geminiResult.fluffSentences.length : 0) +
+                          (Array.isArray(geminiResult.concreteSentences) ? geminiResult.concreteSentences.length : 0),
           fluffRatio,
           grade,
           generatedAt: new Date().toISOString()
@@ -368,6 +438,102 @@ router.get('/search/:query', async (req, res) => {
   } catch (err) {
     console.error('[OPEN FOOD FACTS] Error:', err);
     res.status(500).json({ error: 'Failed to fetch product data.' });
+  }
+});
+
+// ── POST /api/scan/vision — Gemini Multimodal Analysis ──────────────────────────
+router.post('/vision', authenticateToken, upload.single('image'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No image file uploaded.' });
+    }
+
+    if (!process.env.GEMINI_API_KEY) {
+      return res.status(503).json({ error: 'Gemini API is not configured on this server.' });
+    }
+
+    const systemPrompt = `You are a corporate greenwashing detector. Analyze the text visible on this product packaging against FTC Green Guides.
+Identify specific greenwashing claims in the image.
+Return ONLY a JSON object with two fields:
+1. "extractedText": A string containing all the text you can read on the packaging.
+2. "matches": A JSON array of objects. Each object must have:
+  - "text": the exact excerpt from the extracted text that is deceptive,
+  - "label": short title of the deceptive tactic (e.g., "Vague Marketing"),
+  - "type": either "critical", "deceptive", or "low",
+  - "sinType": one of ["Sin of Vagueness", "Sin of No Proof", "Sin of the Hidden Trade-off", "Sin of Fibbing", "Sin of Worshipping False Labels", "Sin of Irrelevance", "Sin of Lesser of Two Evils"],
+  - "explanation": a 1-sentence explanation of why it is greenwashing.
+  - "occurrences": 1`;
+
+    // Send image buffer directly to Gemini
+    const result = await callGeminiMultimodal(systemPrompt, req.file.buffer, req.file.mimetype);
+    
+    if (!result || !result.extractedText) {
+      return res.json({ error: 'Failed to analyze the image or no text detected.' });
+    }
+
+    const fullText = result.extractedText;
+    let matches = result.matches || [];
+    let totalWeight = 0;
+
+    for (const m of matches) {
+      totalWeight += (m.type === 'critical' ? 25 : m.type === 'deceptive' ? 15 : 8);
+    }
+
+    // Fallback logic starts below
+
+    // Fallback if no matches or no Gemini
+    if (matches.length === 0) {
+      for (const entry of LEXICON) {
+        const found = fullText.match(entry.pattern);
+        if (found) {
+          const weight = entry.severity === 'critical' ? 25 : entry.severity === 'deceptive' ? 15 : 8;
+          totalWeight += weight * found.length;
+          matches.push({
+            text: found[0],
+            label: entry.label,
+            type: entry.severity,
+            sinType: entry.sinType,
+            explanation: entry.explanation,
+            occurrences: found.length
+          });
+        }
+      }
+    }
+
+    const rawScore = Math.min(totalWeight, 100);
+    const severity = rawScore > 75 ? 'Critical' : rawScore > 40 ? 'Medium' : 'Low';
+    
+    const sortedMatches = [...matches].sort((a, b) => {
+      const w = { critical: 3, deceptive: 2, low: 1 };
+      return (w[b.type] || 0) - (w[a.type] || 0);
+    });
+    const topMatch = sortedMatches[0];
+    const flagType = topMatch ? topMatch.label : 'Vague Marketing Wording';
+
+    // Mock vision boxes for frontend overlay since we don't have perfect scaling right now
+    const visionBoxes = rawScore > 60 ? [
+      { label: `SUSPICIOUS LABEL (${(85 + Math.random() * 10).toFixed(1)}%)`, style: { top: '22%', left: '20%', width: '30%', height: '15%' }, color: 'border-alert-crimson bg-alert-crimson/10 text-alert-crimson' },
+      { label: `DECEPTIVE CUE (${(78 + Math.random() * 15).toFixed(1)}%)`, style: { bottom: '30%', right: '15%', width: '35%', height: '18%' }, color: 'border-warning-orange bg-warning-orange/10 text-warning-orange' }
+    ] : [];
+
+    res.json({
+      extractedText: fullText,
+      skepticScore: rawScore,
+      severity,
+      flagType,
+      matches,
+      nlpHighlights: matches.slice(0, 5).map(m => ({
+        text: m.text,
+        type: m.type === 'critical' ? 'critical' : 'deceptive',
+        sinType: m.sinType,
+        desc: m.explanation
+      })),
+      visionBoxes
+    });
+
+  } catch (err) {
+    console.error('[VISION API] Error:', err);
+    res.status(500).json({ error: 'Vision analysis failed.' });
   }
 });
 

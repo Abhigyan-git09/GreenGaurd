@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from './context/AuthContext';
 import Login from './components/Login';
+import Register from './components/Register';
+import ForgotPassword from './components/ForgotPassword';
+import ResetPassword from './components/ResetPassword';
 import ScannerWorkspace from './components/ScannerWorkspace';
 import LiveAlertFeed from './components/LiveAlertFeed';
 import AnalyticsPanel from './components/AnalyticsPanel';
@@ -31,8 +34,19 @@ export default function App() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [liveAlerts, setLiveAlerts] = useState([]);
   const [loadingIncidents, setLoadingIncidents] = useState(false);
+  const [authView, setAuthView] = useState('login');
+  const [pendingAlerts, setPendingAlerts] = useState(new Set());
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
+  const reconnectAttemptsRef = useRef(0);
+  const isUnmountedRef = useRef(false);
+
+  useEffect(() => {
+    // Detect reset-password route
+    if (window.location.pathname === '/reset-password') {
+      setAuthView('reset');
+    }
+  }, []);
 
   // ── Fetch incidents from backend ──────────────────────────────────────────
   const fetchIncidents = useCallback(async () => {
@@ -57,13 +71,16 @@ export default function App() {
   // ── WebSocket Connection ──────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
+    isUnmountedRef.current = false;
 
     function connect() {
+      if (isUnmountedRef.current) return;
       const wsUrl = api.getWsUrl();
       const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
+        reconnectAttemptsRef.current = 0;
         console.log('[WS] Connected to live feed');
       };
 
@@ -71,13 +88,15 @@ export default function App() {
         try {
           const data = JSON.parse(event.data);
 
-          if (data.type === 'NEW_ALERT') {
-            setLiveAlerts(prev => [data.alert, ...prev.slice(0, 9)]);
+          if (data.type === 'NEW_ALERT' && data.alert && data.alert.id !== undefined) {
+            setLiveAlerts(prev => {
+              if (prev.some(a => a.id === data.alert.id)) return prev;
+              return [data.alert, ...prev.slice(0, 9)];
+            });
           }
 
-          if (data.type === 'STATUS_CHANGE') {
-            // Update the incidents list when a status changes
-            setIncidents(prev => prev.map(inc => 
+          if (data.type === 'STATUS_CHANGE' && data.incidentId !== undefined && data.newStatus !== undefined) {
+            setIncidents(prev => prev.map(inc =>
               inc.id === data.incidentId ? { ...inc, status: data.newStatus } : inc
             ));
           }
@@ -87,20 +106,26 @@ export default function App() {
       };
 
       ws.onclose = () => {
-        console.log('[WS] Disconnected. Reconnecting in 3s...');
-        reconnectTimeoutRef.current = setTimeout(connect, 3000);
+        if (isUnmountedRef.current) return;
+        const attempt = reconnectAttemptsRef.current++;
+        const delay = Math.min(30000, 1000 * Math.pow(2, attempt));
+        console.log(`[WS] Disconnected. Reconnecting in ${Math.round(delay/1000)}s (attempt ${attempt + 1})…`);
+        reconnectTimeoutRef.current = setTimeout(connect, delay);
       };
 
       ws.onerror = (err) => {
         console.error('[WS] Error:', err);
-        ws.close();
+        try { ws.close(); } catch { /* noop */ }
       };
     }
 
     connect();
 
     return () => {
-      if (wsRef.current) wsRef.current.close();
+      isUnmountedRef.current = true;
+      if (wsRef.current) {
+        try { wsRef.current.close(); } catch { /* noop */ }
+      }
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
     };
   }, [user]);
@@ -115,40 +140,62 @@ export default function App() {
   }
 
   if (!user) {
-    return <Login />;
+    if (authView === 'reset') return <ResetPassword setAuthView={setAuthView} />;
+    if (authView === 'forgot') return <ForgotPassword setAuthView={setAuthView} />;
+    if (authView === 'register') return <Register setAuthView={setAuthView} />;
+    return <Login setAuthView={setAuthView} />;
   }
 
   // ── Handle Auditor actions via API ────────────────────────────────────────
   const handleVerifyClaim = async (alertId) => {
+    if (pendingAlerts.has(alertId)) return;
     const alert = liveAlerts.find(a => a.id === alertId);
     if (!alert) return;
 
-    // Optimistically remove from live feed
+    setPendingAlerts(prev => new Set(prev).add(alertId));
     setLiveAlerts(prev => prev.filter(a => a.id !== alertId));
 
     try {
       const verified = await api.verifyIncident(alertId);
-      // Add the verified incident to our local list
-      setIncidents(prev => [verified, ...prev]);
+      setIncidents(prev => {
+        if (prev.some(i => i.id === verified.id)) return prev;
+        return [verified, ...prev];
+      });
     } catch (err) {
       console.error('[APP] Verify failed:', err);
-      // On failure, put it back
       setLiveAlerts(prev => [alert, ...prev]);
+    } finally {
+      setPendingAlerts(prev => {
+        const next = new Set(prev);
+        next.delete(alertId);
+        return next;
+      });
     }
   };
 
   const handleRejectClaim = async (alertId) => {
+    if (pendingAlerts.has(alertId)) return;
     const alert = liveAlerts.find(a => a.id === alertId);
     if (!alert) return;
 
+    setPendingAlerts(prev => new Set(prev).add(alertId));
     setLiveAlerts(prev => prev.filter(a => a.id !== alertId));
 
     try {
       const rejected = await api.rejectIncident(alertId);
-      setIncidents(prev => [rejected, ...prev]);
+      setIncidents(prev => {
+        if (prev.some(i => i.id === rejected.id)) return prev;
+        return [rejected, ...prev];
+      });
     } catch (err) {
       console.error('[APP] Reject failed:', err);
       setLiveAlerts(prev => [alert, ...prev]);
+    } finally {
+      setPendingAlerts(prev => {
+        const next = new Set(prev);
+        next.delete(alertId);
+        return next;
+      });
     }
   };
 

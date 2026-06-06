@@ -22,10 +22,17 @@ const server = createServer(app);
 
 // ── Middleware ───────────────────────────────────────────────────────────────
 app.use(helmet({ crossOriginResourcePolicy: false }));
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173,http://127.0.0.1:3000')
+  .split(',')
+  .map(s => s.trim())
+  .filter(Boolean);
 app.use(cors({
   origin: function (origin, callback) {
-    // Allow all origins dynamically for the demo
-    callback(null, true);
+    if (!origin) return callback(null, true);
+    if (ALLOWED_ORIGINS.includes('*') || ALLOWED_ORIGINS.includes(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error(`CORS: origin '${origin}' not allowed`));
   },
   credentials: true
 }));
@@ -111,3 +118,29 @@ async function start() {
 }
 
 start();
+
+process.on('uncaughtException', (err) => {
+  console.error('[SERVER] Uncaught exception:', err);
+});
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[SERVER] Unhandled promise rejection:', reason);
+});
+
+function shutdown(signal) {
+  console.log(`\n[SERVER] ${signal} received, shutting down gracefully…`);
+  wss.clients.forEach((client) => {
+    try { client.close(1001, 'server shutting down'); } catch (_) {}
+  });
+  server.close(() => {
+    console.log('[SERVER] HTTP server closed.');
+    process.exit(0);
+  });
+  setTimeout(() => {
+    console.warn('[SERVER] Forced shutdown after 5s timeout.');
+    process.exit(1);
+  }, 5000).unref();
+}
+
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

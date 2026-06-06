@@ -38,22 +38,53 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const register = async (email, password, fullName, role) => {
+    setError(null);
+    try {
+      const data = await api.register(email, password, fullName, role);
+      setUser(data.user);
+      return true;
+    } catch (err) {
+      setError(err.message || 'Registration failed.');
+      return false;
+    }
+  };
+
+  const forgotPassword = async (email) => {
+    setError(null);
+    try {
+      await api.forgotPassword(email);
+      return true;
+    } catch (err) {
+      setError(err.message || 'Failed to request password reset.');
+      return false;
+    }
+  };
+
+  const resetPassword = async (token, newPassword) => {
+    setError(null);
+    try {
+      await api.resetPassword(token, newPassword);
+      return true;
+    } catch (err) {
+      setError(err.message || 'Failed to reset password.');
+      return false;
+    }
+  };
+
   const logout = () => {
     api.logout();
     setUser(null);
   };
 
   const switchRole = (role) => {
-    // In the backend-integrated version, switching roles means logging in as a different user
-    // For convenience, we simulate this by changing the user object locally
-    // In production, this would require re-authentication
     if (user) {
       setUser({ ...user, role });
     }
   };
 
   return (
-    <AuthContext.Provider value={{ user, error, login, logout, switchRole, setUser, loading }}>
+    <AuthContext.Provider value={{ user, error, login, register, forgotPassword, resetPassword, logout, switchRole, setUser, loading, setError }}>
       {children}
     </AuthContext.Provider>
   );

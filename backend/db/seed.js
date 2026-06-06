@@ -6,11 +6,7 @@ import bcrypt from 'bcryptjs';
 import db from './db.js';
 import config from '../config.js';
 
-const SEED_USERS = [
-  { email: 'admin@greengaurd.org', password: 'admin123', role: 'admin', full_name: 'Jane Vance', title: 'Platform Administrator' },
-  { email: 'auditor@greengaurd.org', password: 'auditor123', role: 'auditor', full_name: 'Dr. Marcus Finch', title: 'Sustainability Auditor' },
-  { email: 'consumer@greengaurd.org', password: 'consumer123', role: 'consumer', full_name: 'David K.', title: 'General Consumer' }
-];
+const SEED_USERS = [];
 
 const SEED_INCIDENTS = [
   { product_name: 'Eco-Wear Tee', company_name: 'H&M Conscious', parent_corporation: 'H&M Group', category: 'Apparel', skeptic_score: 82, severity: 'Critical', status: 'Verified', text_content: 'Consciously crafted garments made with 100% sustainable materials for an eco-friendly lifecycle.', flag_type: 'Vague Sustainability Claim' },

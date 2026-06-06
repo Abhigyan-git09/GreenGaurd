@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticateToken } from './auth.js';
 import db from '../db/db.js';
+import { searchCompany } from '../services/opencorporates.js';
 
 const router = Router();
 
@@ -57,6 +58,44 @@ router.get('/network', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('[DATABASE] Network fetch error:', err);
     res.status(500).json({ error: 'Failed to build corporate network.' });
+  }
+});
+
+router.get('/opencorporates/search/:query', authenticateToken, async (req, res) => {
+  try {
+    const { query } = req.params;
+    const companies = await searchCompany(query);
+    
+    // Convert to nodes and links for the force graph
+    // The OpenCorporates search results typically don't have direct parent/subsidiary links
+    // in the basic search. We'll map the found companies as siblings under a mock "Corporate Grouping"
+    // or just return them as individual nodes if they are independent.
+    const nodes = [];
+    const links = [];
+
+    // Parent node representing the search query grouping
+    const parentId = `Search: ${query.toUpperCase()}`;
+    nodes.push({ id: parentId, label: parentId, group: 'parent', incidentCount: 0 });
+
+    companies.slice(0, 15).forEach(c => {
+      const uniqueId = `${c.jurisdiction_code}-${c.company_number}`;
+      nodes.push({ id: uniqueId, label: c.name, group: 'subsidiary', incidentCount: 0, rawData: c });
+      links.push({ source: parentId, target: uniqueId, value: 1 });
+    });
+
+    res.json({
+      nodes,
+      links,
+      stats: {
+        totalNodes: nodes.length,
+        totalLinks: links.length,
+        totalIncidents: 0
+      }
+    });
+
+  } catch (err) {
+    console.error('[DATABASE] OpenCorporates search error:', err);
+    res.status(500).json({ error: 'Failed to search OpenCorporates.' });
   }
 });
 

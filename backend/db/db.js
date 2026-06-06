@@ -17,6 +17,21 @@ function nextId(table) {
   return memoryStore._idCounters[table];
 }
 
+const MAX_INCIDENTS = 500;
+const MAX_AUDIT_LOGS = 200;
+
+function pruneIncidents() {
+  if (memoryStore.incidents.length > MAX_INCIDENTS) {
+    memoryStore.incidents.splice(0, memoryStore.incidents.length - MAX_INCIDENTS);
+  }
+}
+
+function pruneAuditLogs() {
+  if (memoryStore.audit_logs.length > MAX_AUDIT_LOGS) {
+    memoryStore.audit_logs.splice(0, memoryStore.audit_logs.length - MAX_AUDIT_LOGS);
+  }
+}
+
 // ── PostgreSQL Setup ────────────────────────────────────────────────────────
 if (config.usePostgres) {
   pool = new pg.Pool({
@@ -60,6 +75,8 @@ const db = {
         role VARCHAR(50) NOT NULL CHECK(role IN ('admin', 'auditor', 'consumer')),
         full_name VARCHAR(100) NOT NULL,
         title VARCHAR(100) DEFAULT '',
+        reset_token VARCHAR(255),
+        reset_token_expires TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
 
@@ -112,9 +129,49 @@ const db = {
     // In-memory
     const existing = memoryStore.users.find(u => u.email === email);
     if (existing) return existing;
-    const user = { id: nextId('users'), email, password_hash, role, full_name, title: title || '', created_at: new Date().toISOString() };
+    const user = { id: nextId('users'), email, password_hash, role, full_name, title: title || '', reset_token: null, reset_token_expires: null, created_at: new Date().toISOString() };
     memoryStore.users.push(user);
     return user;
+  },
+
+  async savePasswordResetToken(email, token, expires) {
+    if (config.usePostgres) {
+      await pool.query(
+        'UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE email = $3',
+        [token, expires, email]
+      );
+      return;
+    }
+    const user = memoryStore.users.find(u => u.email === email);
+    if (user) {
+      user.reset_token = token;
+      user.reset_token_expires = expires;
+    }
+  },
+
+  async findUserByResetToken(token) {
+    if (config.usePostgres) {
+      const res = await pool.query('SELECT * FROM users WHERE reset_token = $1 AND reset_token_expires > NOW()', [token]);
+      return res.rows[0] || null;
+    }
+    const user = memoryStore.users.find(u => u.reset_token === token && new Date(u.reset_token_expires) > new Date());
+    return user || null;
+  },
+
+  async updatePasswordAndClearToken(userId, newPasswordHash) {
+    if (config.usePostgres) {
+      await pool.query(
+        'UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2',
+        [newPasswordHash, userId]
+      );
+      return;
+    }
+    const user = memoryStore.users.find(u => u.id === userId);
+    if (user) {
+      user.password_hash = newPasswordHash;
+      user.reset_token = null;
+      user.reset_token_expires = null;
+    }
   },
 
   // ── Incidents ───────────────────────────────────────────────────────────
@@ -152,6 +209,7 @@ const db = {
       created_at: new Date().toISOString()
     };
     memoryStore.incidents.push(incident);
+    pruneIncidents();
     return incident;
   },
 
@@ -191,6 +249,7 @@ const db = {
       details: details || '',
       created_at: new Date().toISOString()
     });
+    pruneAuditLogs();
   },
 
   async getAuditLogs() {

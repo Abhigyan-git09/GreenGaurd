@@ -13,6 +13,8 @@ export default function CorporateWeb() {
   const [selected, setSelected] = useState(null);
   const [hovered, setHovered] = useState(null);
   const [size, setSize] = useState({ width: 800, height: 600 });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
 
   const fetchNetwork = useCallback(async () => {
     setLoading(true);
@@ -29,6 +31,29 @@ export default function CorporateWeb() {
       setLoading(false);
     }
   }, []);
+
+  const handleSearch = async (e) => {
+    e.preventDefault();
+    if (!searchQuery.trim()) {
+      fetchNetwork();
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setIsSearching(true);
+    try {
+      const result = await api.searchOpenCorporates(searchQuery);
+      const nodes = (result.nodes || []).map((n) => ({ ...n }));
+      const links = (result.links || []).map((l) => ({ ...l }));
+      setData({ nodes, links, stats: result.stats || { totalNodes: nodes.length, totalLinks: links.length, totalIncidents: 0 } });
+    } catch (err) {
+      console.error('[CORP WEB] Search failed:', err);
+      setError(err.message || 'Failed to search OpenCorporates.');
+    } finally {
+      setLoading(false);
+      setIsSearching(false);
+    }
+  };
 
   useEffect(() => {
     if (data.nodes.length === 0 && !error) {
@@ -88,7 +113,7 @@ export default function CorporateWeb() {
     ctx.stroke();
 
     if (globalScale > 1.2 || isParent) {
-      const label = node.id;
+      const label = node.label || node.id;
       const fontSize = isParent ? 12 / globalScale : 9 / globalScale;
       ctx.font = `${isParent ? 'bold ' : ''}${fontSize}px JetBrains Mono, monospace`;
       ctx.textAlign = 'center';
@@ -123,6 +148,23 @@ export default function CorporateWeb() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          <form onSubmit={handleSearch} className="flex items-center gap-2 mr-4">
+            <input
+              type="text"
+              placeholder="Search OpenCorporates..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="bg-[#11231c] whisper-border-effect rounded px-4 py-1.5 text-text-ivory text-xs focus:outline-none focus:border-primary w-48 transition-colors"
+            />
+            <button 
+              type="submit" 
+              disabled={loading || isSearching}
+              className="bg-primary/20 text-primary px-3 py-1.5 rounded text-[10px] font-label-caps hover:bg-primary/30 disabled:opacity-50"
+            >
+              {isSearching ? '...' : 'Search'}
+            </button>
+          </form>
+
           <div className="flex items-center gap-2 px-3 py-1.5 bg-[#11231c] whisper-border-effect rounded border">
             <span className="font-metric-md text-[10px] text-outline">NODES</span>
             <span className="font-metric-md text-[10px] font-bold text-text-ivory">{data.stats.totalNodes}</span>

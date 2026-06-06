@@ -34,6 +34,35 @@ const api = {
     return data;
   },
 
+  async register(email, password, fullName, role = 'auditor') {
+    const res = await fetch(`${API_URL}/api/auth/register`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password, full_name: fullName, role })
+    });
+    const data = await handleResponse(res);
+    localStorage.setItem('ecoskeptic_token', data.token);
+    return data;
+  },
+
+  async forgotPassword(email) {
+    const res = await fetch(`${API_URL}/api/auth/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email })
+    });
+    return handleResponse(res);
+  },
+
+  async resetPassword(token, newPassword) {
+    const res = await fetch(`${API_URL}/api/auth/reset-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, newPassword })
+    });
+    return handleResponse(res);
+  },
+
   async getMe() {
     const res = await fetch(`${API_URL}/api/auth/me`, {
       headers: authHeaders()
@@ -83,6 +112,23 @@ const api = {
     return handleResponse(res);
   },
 
+  async scanVision(file) {
+    const formData = new FormData();
+    formData.append('image', file);
+    
+    // Note: Do not set Content-Type header when sending FormData.
+    // The browser will automatically set it to multipart/form-data with the correct boundary.
+    const headers = authHeaders();
+    delete headers['Content-Type'];
+
+    const res = await fetch(`${API_URL}/api/scan/vision`, {
+      method: 'POST',
+      headers,
+      body: formData
+    });
+    return handleResponse(res);
+  },
+
   async scanEsg({ text }) {
     const res = await fetch(`${API_URL}/api/scan/esg`, {
       method: 'POST',
@@ -102,6 +148,13 @@ const api = {
   // Corporate Network Graph
   async getCorporateNetwork() {
     const res = await fetch(`${API_URL}/api/database/network`, {
+      headers: authHeaders()
+    });
+    return handleResponse(res);
+  },
+
+  async searchOpenCorporates(query) {
+    const res = await fetch(`${API_URL}/api/database/opencorporates/search/${encodeURIComponent(query)}`, {
       headers: authHeaders()
     });
     return handleResponse(res);
